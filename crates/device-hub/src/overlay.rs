@@ -600,8 +600,10 @@ impl Shell {
                     .child(kind_label(k))
                     .on_click(cx.listener(move |this, _, _, cx| {
                         let nd = if mc.volatile_buttons && k == ButtonActionKind::Key {
-                            ButtonAction::Key(KeyStroke {mods:4, usage:0})
-                        } else { default_action(k) };
+                            ButtonAction::Key(KeyStroke { mods: 4, usage: 0 })
+                        } else {
+                            default_action(k)
+                        };
                         if let Some(Modal::Button { draft, capture, .. }) = this.modal.as_mut() {
                             if draft.kind() != k {
                                 *draft = nd.clone();

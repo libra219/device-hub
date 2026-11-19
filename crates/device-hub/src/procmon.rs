@@ -64,7 +64,10 @@ fn foreground_path() -> Option<String> {
 }
 
 pub fn foreground_app() -> Option<String> {
-    foreground_path()?.rsplit(['\\', '/']).next().map(str::to_owned)
+    foreground_path()?
+        .rsplit(['\\', '/'])
+        .next()
+        .map(str::to_owned)
 }
 
 /// 可視ウィンドウを持つプロセスの一覧 `(exe 名, 代表ウィンドウタイトル)`。
@@ -156,10 +159,15 @@ pub fn running_apps() -> Vec<(String, String)> {
 /// exe 名がルールの process に一致するか (小文字・部分一致)。
 fn rule_matches(rule: &ProcRule, fg: &str) -> bool {
     let pat = rule.process.trim().to_lowercase();
-    if pat.contains(['\\','/']) {
+    if pat.contains(['\\', '/']) {
         return fg.replace('/', "\\") == pat.replace('/', "\\");
     }
-    !pat.is_empty() && fg.rsplit(['\\','/']).next().unwrap_or_default().contains(&pat)
+    !pat.is_empty()
+        && fg
+            .rsplit(['\\', '/'])
+            .next()
+            .unwrap_or_default()
+            .contains(&pat)
 }
 
 /// ルールの識別キー (index ではなく内容で持つ — 削除/並び替えに強い)。
@@ -303,9 +311,18 @@ impl Shell {
     /// `Change::Profile` (構成切替) を途中に含んでいても、切替が始まった時点で
     /// 以降を保留に回すので順序が守られる。
     pub fn apply_changes(&mut self, id: &DeviceId, changes: Vec<Change>) -> (usize, usize) {
+        for change in &changes {
+            if let Change::Button { slot, action } = change {
+                self.profile_buttons
+                    .entry(id.0.clone())
+                    .or_default()
+                    .insert(*slot, action.clone());
+            }
+        }
         let n = changes.len();
         let mut i = 0;
-        while i < n && self.device_applyable(id) {
+        let queued = self.proc_pending.iter().any(|(d, _)| d == &id.0);
+        while !queued && i < n && self.device_applyable(id) {
             self.hub.apply(id, changes[i].clone());
             i += 1;
         }
@@ -314,7 +331,22 @@ impl Shell {
             // 未接続のまま遷移を繰り返してもエントリ数が増えない)。
             let rest = changes[i..].to_vec();
             if let Some((_, q)) = self.proc_pending.iter_mut().find(|(d, _)| *d == id.0) {
-                q.extend(rest);
+                for change in rest {
+                    if let Change::Button { slot, .. } = &change {
+                        // Only the latest mapping is needed when a mouse wakes.
+                        let start = q
+                            .iter()
+                            .rposition(|c| !matches!(c, Change::Button { .. }))
+                            .map_or(0, |i| i + 1);
+                        if let Some(i) = q[start..]
+                            .iter()
+                            .position(|c| matches!(c,Change::Button{slot:s,..} if s==slot))
+                        {
+                            q.remove(start + i);
+                        }
+                    }
+                    q.push(change);
+                }
             } else {
                 self.proc_pending.push((id.0.clone(), rest));
             }
@@ -409,13 +441,63 @@ impl Shell {
     pub fn proc_tick(&mut self, cx: &mut Context<Self>) {
         if !self.startup_profile_applied {
             self.startup_profile_applied = true;
-            if let Some(index) = self.prefs.profiles.iter().position(|p| {
-                self.prefs.startup_profile.as_deref() == Some(p.name.as_str())
-            }) {
+            if let Some(index) = self
+                .prefs
+                .profiles
+                .iter()
+                .position(|p| self.prefs.startup_profile.as_deref() == Some(p.name.as_str()))
+            {
                 self.apply_profile(index, cx);
             }
         }
         self.proc_drain(cx);
+        // Host maps can disappear after an unplug or a failed write during sleep.
+        // Re-open affected devices and reconcile against their confirmed state.
+        let mut retry = Vec::new();
+        for (did, buttons) in &self.profile_buttons {
+            let id = DeviceId(did.clone());
+            if self.proc_pending.iter().any(|(queued, _)| queued == did) {
+                continue;
+            }
+            if !self.hub.devices.iter().any(|d| d.id == id && d.supported) {
+                continue;
+            }
+            let session = self.hub.session(&id);
+            let caps = session.and_then(|s| s.caps.as_ref());
+            if caps.is_some_and(|c| !c.mouse.as_ref().is_some_and(|m| m.volatile_buttons)) {
+                continue;
+            }
+            if session.is_some_and(|s| s.pending != 0 || s.switching_profile) {
+                continue;
+            }
+            let current = session
+                .filter(|s| s.ready())
+                .and_then(|s| s.state.as_ref())
+                .and_then(|s| s.mouse.as_ref());
+            let mut changes: Vec<_> = buttons
+                .iter()
+                .filter(|(slot, action)| {
+                    current.and_then(|m| m.buttons.get(**slot)) != Some(*action)
+                })
+                .map(|(slot, action)| Change::Button {
+                    slot: *slot,
+                    action: action.clone(),
+                })
+                .collect();
+            changes.sort_by_key(|c| {
+                !matches!(
+                    c,
+                    Change::Button {
+                        action: devhub_core::ButtonAction::Mouse(devhub_core::MouseFn::Left),
+                        ..
+                    }
+                )
+            });
+            if !changes.is_empty() {
+                retry.push((did.clone(), changes));
+            }
+        }
+        self.proc_pending.extend(retry);
         if self.prefs.proc_rules.is_empty() {
             // ルールが全削除 = 管理下から外れた。適用中だった分は記録値で復帰する。
             let states = std::mem::take(&mut self.proc_states);
@@ -502,10 +584,16 @@ mod tests {
     #[test]
     fn full_game_path_excludes_other_games_with_the_same_binary_name() {
         let target = rule("I:/Steam/Wuthering Waves/Client-Win64-Shipping.exe");
-        assert!(rule_matches(&target, r"i:\steam\wuthering waves\client-win64-shipping.exe"));
-        assert!(!rule_matches(&target,r"i:\steam\another game\client-win64-shipping.exe"));
-        assert!(!rule_matches(&rule("wuthering"),r"i:\wuthering\other.exe"));
-        assert!(rule_matches(&rule("starrail"),r"i:\games\starrail.exe"));
+        assert!(rule_matches(
+            &target,
+            r"i:\steam\wuthering waves\client-win64-shipping.exe"
+        ));
+        assert!(!rule_matches(
+            &target,
+            r"i:\steam\another game\client-win64-shipping.exe"
+        ));
+        assert!(!rule_matches(&rule("wuthering"), r"i:\wuthering\other.exe"));
+        assert!(rule_matches(&rule("starrail"), r"i:\games\starrail.exe"));
     }
 
     fn rule(process: &str) -> ProcRule {
