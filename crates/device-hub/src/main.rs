@@ -21,10 +21,13 @@ use device_hub::{prefs::Prefs, theme};
 use gpui_kit::component::{Theme, ThemeMode, TitleBar};
 use gpui_kit::*;
 
+#[cfg(windows)]
+mod tray;
+
 fn main() {
     device_hub::rawinput::start(); // 実測ポーリングレート計測 (Raw Input)
-    // USB 計測ワーカーの診断ログ — 未設定なら %TEMP% に既定で出す
-    // (切断の OS コード採取用。ワーカー遷移のみで容量は微小)。
+                                   // USB 計測ワーカーの診断ログ — 未設定なら %TEMP% に既定で出す
+                                   // (切断の OS コード採取用。ワーカー遷移のみで容量は微小)。
     if std::env::var_os("DEVHUB_USB_LOG").is_none() {
         if let Some(tmp) = std::env::var_os("TEMP") {
             let mut p = std::path::PathBuf::from(tmp);
@@ -64,6 +67,11 @@ fn main() {
             options.window_min_size = Some(size(px(1040.), px(640.)));
             // 背面に回ったら描画を間引く (ゲームの邪魔をしない)。
             options.inactive_frame_interval = Some(std::time::Duration::from_millis(250));
+            #[cfg(windows)]
+            if device_hub::resident_mode() {
+                options.show = false;
+                options.focus = false;
+            }
             options.app_id = Some("devicehub".into());
             // 窓キャプション — タスクマネージャーと Alt+Tab の表示名になる。
             if let Some(tb) = options.titlebar.as_mut() {
@@ -71,13 +79,13 @@ fn main() {
             }
 
             gpui_kit::open_window(options, cx, |window, cx| {
-                if device_hub::resident_mode() {
-                    window.on_window_should_close(cx, |window, _| {
-                        window.minimize_window();
-                        false
-                    });
+                #[cfg(windows)]
+                if !tray::install(window, cx) && device_hub::resident_mode() {
+                    window.activate_window();
                 }
-                if device_hub::resident_mode() || std::env::args_os().any(|arg| arg == "--minimized") {
+                if !device_hub::resident_mode()
+                    && std::env::args_os().any(|arg| arg == "--minimized")
+                {
                     window.defer(cx, |window, _| window.minimize_window());
                 }
                 cx.new(|cx| Shell::new(window, cx))
