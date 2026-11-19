@@ -37,6 +37,9 @@ if (!(Test-Path -LiteralPath $folder)) {
 if ((Get-Item -LiteralPath $folder).Attributes.HasFlag([IO.FileAttributes]::ReparsePoint)) {
     throw 'Unexpected application folder link.'
 }
+if ((Test-Path -LiteralPath $binary) -and (Get-Item -LiteralPath $binary).Attributes.HasFlag([IO.FileAttributes]::ReparsePoint)) {
+    throw 'Unexpected executable link.'
+}
 if ($existing) {Stop-ScheduledTask -TaskName $name}
 Copy-Item -LiteralPath $source.FullName -Destination $binary -Force
 if ((Get-FileHash -LiteralPath $binary).Hash -ne (Get-FileHash -LiteralPath $source.FullName).Hash) {
@@ -62,4 +65,13 @@ if ($old -and !(Get-Item -LiteralPath $backup).GetValue('PreviousLGHUB')) {
     New-ItemProperty -LiteralPath $backup -Name PreviousLGHUB -Value $old -PropertyType String | Out-Null
 }
 if ($old) {Remove-ItemProperty -LiteralPath $run -Name LGHUB}
+# Release the vendor HID client after the replacement has opened successfully.
+$vendor = Join-Path ([Environment]::GetFolderPath('ProgramFiles')) 'LGHUB'
+foreach ($item in @('system_tray\lghub_system_tray.exe','lghub.exe','lghub_agent.exe')) {
+    $expected = Join-Path $vendor $item
+    $processName = [IO.Path]::GetFileNameWithoutExtension($item)
+    Get-Process -Name $processName -ErrorAction SilentlyContinue |
+        Where-Object { $_.Path -eq $expected } |
+        Stop-Process -ErrorAction SilentlyContinue
+}
 Write-Output "Running: $binary"
