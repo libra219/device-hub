@@ -599,7 +599,11 @@ impl Shell {
                     })
                     .child(kind_label(k))
                     .on_click(cx.listener(move |this, _, _, cx| {
-                        let nd = default_action(k);
+                        let nd = if mc.volatile_buttons && k == ButtonActionKind::Key {
+                            ButtonAction::Key(KeyStroke { mods: 4, usage: 0 })
+                        } else {
+                            default_action(k)
+                        };
                         if let Some(Modal::Button { draft, capture, .. }) = this.modal.as_mut() {
                             if draft.kind() != k {
                                 *draft = nd.clone();
@@ -648,7 +652,7 @@ impl Shell {
         let detail: AnyElement = match &draft {
             ButtonAction::Mouse(m) => {
                 let mut g = div().grid().grid_cols(4).gap(px(6.));
-                for f in MOUSE_FNS {
+                for f in if mc.volatile_buttons { &MOUSE_FNS[..5] } else { MOUSE_FNS } {
                     g = g.child(
                         grid_btn(format!("mf-{f:?}"), keys::mouse_fn_name(*f), *m == *f)
                             .on_click(cx.listener(set(ButtonAction::Mouse(*f)))),
@@ -802,6 +806,9 @@ impl Shell {
                         ),
                     ))
                     .into_any_element()
+            }
+            ButtonAction::Key(_) if mc.volatile_buttons => {
+                ui::faint("左 Alt（ボタンを押している間）").into_any_element()
             }
             ButtonAction::Key(stroke) => {
                 let s = *stroke;

@@ -1106,6 +1106,7 @@ fn build_caps(info: &DeviceInfo, m: &MfModel) -> Capabilities {
         actions: vec![],
         profiles: None, // open() 後に caps へ入れるため profile_count を別途反映
         mouse: Some(MouseCaps {
+            volatile_buttons: false,
             dpi_min: 50,
             dpi_max: m.dpi_max,
             dpi_step: m.dpi_step,

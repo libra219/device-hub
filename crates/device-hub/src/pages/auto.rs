@@ -489,7 +489,7 @@ impl Shell {
         // ================= プロセス監視 =================
         let mut rule_body = ui::body().child(ui::row(
             "現在の前面アプリ",
-            Some("exe 名の部分一致 · 複数一致は下のルールが優先 · 前面が安定してから切替 (~2 秒)"),
+            Some("exe 名は部分一致、フルパスは完全一致 · 前面が安定してから切替 (~2 秒)"),
             div().child(ui::chip(fg_now.clone(), p.accent)),
         ));
         if self.prefs.proc_rules.is_empty() {
@@ -662,7 +662,7 @@ impl Shell {
         rule_body = rule_body
             .child(ui::row(
                 "監視するプロセス",
-                Some("実行中のアプリから選ぶか、exe 名を直接入力 (部分一致)"),
+                    Some("実行中のアプリから選ぶか、exe 名またはフルパスを入力"),
                 div()
                     .flex()
                     .items_center()

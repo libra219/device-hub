@@ -1523,6 +1523,20 @@ pub fn snapshot_changes(caps: &Capabilities, st: &DeviceState) -> Vec<Change> {
         }
     }
     if let (Some(m), Some(mc)) = (&st.mouse, &caps.mouse) {
+        if mc.volatile_buttons {
+            // Install a left-click binding before removing a previous one.
+            let mut entries: Vec<_> = m
+                .buttons
+                .iter()
+                .take(mc.buttons.len())
+                .enumerate()
+                .collect();
+            entries.sort_by_key(|(_, b)| !matches!(b, ButtonAction::Mouse(MouseFn::Left)));
+            out.extend(entries.into_iter().map(|(slot, action)| Change::Button {
+                slot,
+                action: action.clone(),
+            }));
+        }
         if !m.stages.is_empty() && m.stages.len() <= mc.max_stages {
             out.push(Change::DpiStages {
                 stages: m.stages.clone(),

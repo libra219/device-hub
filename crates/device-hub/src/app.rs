@@ -105,7 +105,9 @@ pub fn tabs_for(caps: &Capabilities) -> Vec<Tab> {
     let mut v = vec![];
     let kb = caps.keyboard.is_some();
     if let Some(m) = &caps.mouse {
-        v.push(Tab::Dpi);
+        if m.max_stages > 0 {
+            v.push(Tab::Dpi);
+        }
         if !m.buttons.is_empty() {
             v.push(Tab::Buttons);
         }
@@ -381,6 +383,9 @@ pub struct Shell {
     pub proc_states: std::collections::HashMap<String, crate::procmon::ProcApplied>,
     /// 直前 tick の前面 exe (Some = 解決成功)。遷移は 2 tick 連続で同じときだけ評価。
     pub proc_fg: Option<String>,
+    pub startup_profile_applied: bool,
+    pub profile_buttons:
+        std::collections::HashMap<String, std::collections::BTreeMap<usize, ButtonAction>>,
     /// セッションが書き込み可能になるまで保留した変更列 (デバイス id → 残りの Change)。
     pub proc_pending: Vec<(String, Vec<Change>)>,
     /// Failed セッションの最後の reload 試行時刻 (drain の再試行間引き用)。
@@ -664,6 +669,8 @@ impl Shell {
             rec_profile: None,
             proc_states: Default::default(),
             proc_fg: None,
+            startup_profile_applied: false,
+            profile_buttons: Default::default(),
             proc_pending: vec![],
             proc_retry: Default::default(),
             auto_form: Default::default(),
@@ -854,6 +861,11 @@ impl Shell {
                         }
                         self.prefs.save();
                     }
+                }
+            }
+            if let Change::Button { slot, action } = &change {
+                if let Some(buttons) = self.profile_buttons.get_mut(&id.0) {
+                    buttons.insert(*slot, action.clone());
                 }
             }
             self.hub.apply(&id, change);

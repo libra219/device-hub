@@ -261,6 +261,7 @@ pub fn caps(model: &LamzuModel, transport: Transport, sensor: u8) -> Capabilitie
             renamable: false,
         }),
         mouse: Some(MouseCaps {
+            volatile_buttons: false,
             dpi_min: 50,
             dpi_max,
             dpi_step,
