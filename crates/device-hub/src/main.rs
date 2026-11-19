@@ -71,6 +71,9 @@ fn main() {
             }
 
             gpui_kit::open_window(options, cx, |window, cx| {
+                if std::env::args_os().any(|arg| arg == "--minimized") {
+                    window.defer(cx, |window, _| window.minimize_window());
+                }
                 cx.new(|cx| Shell::new(window, cx))
             })
             .expect("failed to open window");
