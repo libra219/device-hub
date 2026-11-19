@@ -50,15 +50,36 @@ $trigger = New-ScheduledTaskTrigger -AtLogOn -User $user.Name
 $principal = New-ScheduledTaskPrincipal -UserId $user.Name -LogonType Interactive -RunLevel Highest
 $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
 Register-ScheduledTask -TaskName $name -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
+# A tray-only process has no visible MainWindowHandle. Look for its registered icon.
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public static class DeviceHubTrayStatus {
+    private delegate bool Visitor(IntPtr window, IntPtr data);
+    [DllImport("user32")] private static extern bool EnumWindows(Visitor visit, IntPtr data);
+    [DllImport("user32")] private static extern uint GetWindowThreadProcessId(IntPtr window, out uint pid);
+    [DllImport("user32", CharSet = CharSet.Unicode)] private static extern IntPtr GetProp(IntPtr window, string name);
+    public static bool Ready(int processId) {
+        bool found = false;
+        EnumWindows(delegate(IntPtr window, IntPtr data) {
+            uint pid;
+            GetWindowThreadProcessId(window, out pid);
+            found = pid == processId && GetProp(window, "DeviceHub.TrayReady") != IntPtr.Zero;
+            return !found;
+        }, IntPtr.Zero);
+        return found;
+    }
+}
+"@
 Start-ScheduledTask -TaskName $name
 $until = (Get-Date).AddSeconds(45)
 do {
     Start-Sleep -Milliseconds 500
-    $app = Get-Process -Name device-hub -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $binary -and $_.MainWindowHandle -ne 0 }
+    $app = Get-Process -Name device-hub -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $binary -and [DeviceHubTrayStatus]::Ready($_.Id) }
 } until ($app -or (Get-Date) -gt $until)
 if (!$app) {
     Unregister-ScheduledTask -TaskName $name -Confirm:$false
-    throw 'Device HUB did not open a window. G HUB startup was preserved.'
+    throw 'Device HUB did not register a tray icon. G HUB startup was preserved.'
 }
 New-Item -Path $backup -Force | Out-Null
 if ($old -and !(Get-Item -LiteralPath $backup).GetValue('PreviousLGHUB')) {

@@ -18,4 +18,6 @@ Device HUB でマウスを開き、「ボタン」で G 番号と動作を選び
 
 ログオン起動の切替は PowerShell の `scripts/logicool-startup.ps1 -Executable <device-hub.exeのフルパス>` で行います。同じスクリプトに `-Restore` を指定すると、自動起動登録を元に戻せます。
 
-管理者として起動するゲームで左 Alt を使う場合は、管理者 PowerShell から `scripts/install-logicool-resident.ps1 -Executable <device-hub.exeのフルパス>` を実行します。Program Files に配置したアプリをタスクスケジューラがログオン時に最小化して起動します。取り消しは同じスクリプトの `-Restore` です。
+管理者として起動するゲームで左 Alt を使う場合は、管理者 PowerShell から `scripts/install-logicool-resident.ps1 -Executable <device-hub.exeのフルパス>` を実行します。Program Files に配置したアプリをタスクスケジューラがログオン時にタスクトレイで起動します。取り消しは同じスクリプトの `-Restore` です。
+
+通常起動時も、ウィンドウの × を押すとタスクトレイに格納され、プロファイル監視が続きます。Device HUB アイコンをクリックすると再表示できます。右クリックメニューから「アプリを表示」「アプリを終了」を選べます。「アプリ設定」からも終了できます。
