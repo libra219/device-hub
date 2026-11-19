@@ -105,7 +105,9 @@ pub fn tabs_for(caps: &Capabilities) -> Vec<Tab> {
     let mut v = vec![];
     let kb = caps.keyboard.is_some();
     if let Some(m) = &caps.mouse {
-        v.push(Tab::Dpi);
+        if m.max_stages > 0 {
+            v.push(Tab::Dpi);
+        }
         if !m.buttons.is_empty() {
             v.push(Tab::Buttons);
         }

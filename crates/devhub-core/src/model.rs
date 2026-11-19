@@ -72,6 +72,7 @@ pub enum DriverKind {
     Atk,
     /// www.lamzu.net / Aurora 系 (64B feature report、if2 FFFF:00)。
     Lamzu,
+    Logitech,
     /// 未割り当て (検出だけできる)。
     Unsupported,
 }
@@ -616,6 +617,8 @@ pub struct ButtonSlot {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct MouseCaps {
+    /// Volatile host map that can be captured in foreground profiles.
+    pub volatile_buttons: bool,
     pub dpi_min: u32,
     pub dpi_max: u32,
     /// DPI の刻み (10/50/100)。

@@ -57,7 +57,38 @@ const fn mf(
 /// mouse.fit の PID は `https://www.mouse.fit/Config/env-models.json` (2026-11 取得) の
 /// `PIDWired` / `PIDWireless` / `PIDWireless4K8K` から。usage_page/usage は
 /// HTS Plus Pro 実機 (0xFF02 / 0x02) と同じと仮定 — **他機種は実機で要確認**。
+const fn logitech(pid: u16, wired: bool) -> KnownDevice {
+    KnownDevice {
+        vid: 0x046d,
+        pid,
+        usage_page: Some(0xff00),
+        usage: Some(2),
+        kind: DeviceKind::Mouse,
+        vendor: "Logicool",
+        model: if wired {
+            "pro-wireless"
+        } else {
+            "lightspeed-receiver"
+        },
+        name: if wired {
+            "PRO Wireless"
+        } else {
+            "LIGHTSPEED Receiver"
+        },
+        transport: if wired {
+            Transport::Wired
+        } else {
+            Transport::Wireless24G
+        },
+        driver: DriverKind::Logitech,
+        verified: wired,
+    }
+}
+
 pub const KNOWN: &[KnownDevice] = &[
+    logitech(0xc088, true),
+    logitech(0xc539, false),
+    logitech(0xc547, false),
     // ---------------------------------------------------------------- キーボード
     KnownDevice {
         vid: 0x1CA6,

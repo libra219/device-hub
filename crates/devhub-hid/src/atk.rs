@@ -518,6 +518,7 @@ fn build_caps() -> Capabilities {
             renamable: false,
         }),
         mouse: Some(MouseCaps {
+            volatile_buttons: false,
             dpi_min: 50,
             dpi_max: 42000,
             dpi_step: 1,

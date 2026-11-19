@@ -648,7 +648,7 @@ impl Shell {
         let detail: AnyElement = match &draft {
             ButtonAction::Mouse(m) => {
                 let mut g = div().grid().grid_cols(4).gap(px(6.));
-                for f in MOUSE_FNS {
+                for f in if mc.volatile_buttons { &MOUSE_FNS[..5] } else { MOUSE_FNS } {
                     g = g.child(
                         grid_btn(format!("mf-{f:?}"), keys::mouse_fn_name(*f), *m == *f)
                             .on_click(cx.listener(set(ButtonAction::Mouse(*f)))),
