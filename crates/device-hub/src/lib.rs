@@ -10,6 +10,11 @@
 //! - `theme` / `wallpaper` / `prefs` / `keycode`
 
 pub mod app;
+
+pub fn resident_mode() -> bool {
+    static RESIDENT: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *RESIDENT.get_or_init(|| std::env::args_os().any(|arg| arg == "--resident"))
+}
 pub mod atomic;
 pub mod audio;
 pub mod cursor;

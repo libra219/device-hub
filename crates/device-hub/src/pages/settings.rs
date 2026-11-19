@@ -266,6 +266,11 @@ impl Shell {
                 .gap(px(6.))
                 .pt(px(4.))
                 .child(ui::sub(format!("Device Hub {}", env!("CARGO_PKG_VERSION"))))
+                .when(crate::resident_mode(), |d| d.child(ui::row(
+                    "常駐モード",
+                    Some("ウィンドウを閉じても監視を続けます"),
+                    ui::button("quit-resident", "常駐を終了", None, Btn::Glass, cx, |_, _, cx| cx.quit()),
+                )))
                 .child(ui::faint("mouse.fit / hub.xsyd.top の設定をブラウザなしで行うための個人用ツール。GPUI + Liquid Glass。"))
                 .child(ui::faint("新しいデバイスの追加方法: docs/ADD_DEVICE.md")),
         );

@@ -45,7 +45,7 @@ Copy-Item -LiteralPath $source.FullName -Destination $binary -Force
 if ((Get-FileHash -LiteralPath $binary).Hash -ne (Get-FileHash -LiteralPath $source.FullName).Hash) {
     throw 'Installed executable does not match the build.'
 }
-$action = New-ScheduledTaskAction -Execute $binary -Argument '--minimized' -WorkingDirectory $folder
+$action = New-ScheduledTaskAction -Execute $binary -Argument '--resident' -WorkingDirectory $folder
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User $user.Name
 $principal = New-ScheduledTaskPrincipal -UserId $user.Name -LogonType Interactive -RunLevel Highest
 $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)

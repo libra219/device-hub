@@ -23,7 +23,7 @@ if ($Restore) {
 }
 $file = Get-Item -LiteralPath $Executable
 if ($file.Name -ne 'device-hub.exe') { throw 'Select the built device-hub.exe.' }
-$command = '"{0}" --minimized' -f $file.FullName
+$command = '"{0}" --resident' -f $file.FullName
 $old = $key.GetValue('LGHUB')
 if ($old -and $old -notmatch '(?i)\\LGHUB\\.*lghub[^"]*\.exe') {
     throw 'Unrecognized LGHUB startup command.'
