@@ -23,7 +23,7 @@ use gpui_kit::prelude::*;
 
 /// 前面ウィンドウの exe 名 (小文字・拡張子つき)。
 #[cfg(windows)]
-pub fn foreground_app() -> Option<String> {
+fn foreground_path() -> Option<String> {
     use windows::Win32::Foundation::CloseHandle;
     use windows::Win32::System::Threading::{
         OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
@@ -54,16 +54,17 @@ pub fn foreground_app() -> Option<String> {
         if !ok || len == 0 {
             return None;
         }
-        String::from_utf16_lossy(&buf[..len as usize])
-            .rsplit(['\\', '/'])
-            .next()
-            .map(|s| s.to_lowercase())
+        Some(String::from_utf16_lossy(&buf[..len as usize]).to_lowercase())
     }
 }
 
 #[cfg(not(windows))]
-pub fn foreground_app() -> Option<String> {
+fn foreground_path() -> Option<String> {
     None
+}
+
+pub fn foreground_app() -> Option<String> {
+    foreground_path()?.rsplit(['\\', '/']).next().map(str::to_owned)
 }
 
 /// 可視ウィンドウを持つプロセスの一覧 `(exe 名, 代表ウィンドウタイトル)`。
@@ -155,7 +156,10 @@ pub fn running_apps() -> Vec<(String, String)> {
 /// exe 名がルールの process に一致するか (小文字・部分一致)。
 fn rule_matches(rule: &ProcRule, fg: &str) -> bool {
     let pat = rule.process.trim().to_lowercase();
-    !pat.is_empty() && fg.contains(&pat)
+    if pat.contains(['\\','/']) {
+        return fg.replace('/', "\\") == pat.replace('/', "\\");
+    }
+    !pat.is_empty() && fg.rsplit(['\\','/']).next().unwrap_or_default().contains(&pat)
 }
 
 /// ルールの識別キー (index ではなく内容で持つ — 削除/並び替えに強い)。
@@ -403,6 +407,14 @@ impl Shell {
     ///   中間状態へ EEPROM 書き込みをしない = フラッシュ保護)。
     /// - 遷移は復帰→新規の順で、管理下のアプリ間を直接移っても新しい側が勝つ。
     pub fn proc_tick(&mut self, cx: &mut Context<Self>) {
+        if !self.startup_profile_applied {
+            self.startup_profile_applied = true;
+            if let Some(index) = self.prefs.profiles.iter().position(|p| {
+                self.prefs.startup_profile.as_deref() == Some(p.name.as_str())
+            }) {
+                self.apply_profile(index, cx);
+            }
+        }
         self.proc_drain(cx);
         if self.prefs.proc_rules.is_empty() {
             // ルールが全削除 = 管理下から外れた。適用中だった分は記録値で復帰する。
@@ -430,7 +442,7 @@ impl Shell {
             self.proc_fg = None;
             return;
         }
-        let fg = foreground_app().filter(|s| !s.is_empty());
+        let fg = foreground_path().filter(|s| !s.is_empty());
         if fg != self.proc_fg {
             self.proc_fg = fg;
             return;
@@ -486,6 +498,15 @@ impl Shell {
 mod tests {
     use super::*;
     use crate::prefs::{Prefs, ProcRule, SavedProfile};
+
+    #[test]
+    fn full_game_path_excludes_other_games_with_the_same_binary_name() {
+        let target = rule("I:/Steam/Wuthering Waves/Client-Win64-Shipping.exe");
+        assert!(rule_matches(&target, r"i:\steam\wuthering waves\client-win64-shipping.exe"));
+        assert!(!rule_matches(&target,r"i:\steam\another game\client-win64-shipping.exe"));
+        assert!(!rule_matches(&rule("wuthering"),r"i:\wuthering\other.exe"));
+        assert!(rule_matches(&rule("starrail"),r"i:\games\starrail.exe"));
+    }
 
     fn rule(process: &str) -> ProcRule {
         ProcRule {

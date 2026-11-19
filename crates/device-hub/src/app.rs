@@ -383,6 +383,7 @@ pub struct Shell {
     pub proc_states: std::collections::HashMap<String, crate::procmon::ProcApplied>,
     /// 直前 tick の前面 exe (Some = 解決成功)。遷移は 2 tick 連続で同じときだけ評価。
     pub proc_fg: Option<String>,
+    pub startup_profile_applied: bool,
     /// セッションが書き込み可能になるまで保留した変更列 (デバイス id → 残りの Change)。
     pub proc_pending: Vec<(String, Vec<Change>)>,
     /// Failed セッションの最後の reload 試行時刻 (drain の再試行間引き用)。
@@ -666,6 +667,7 @@ impl Shell {
             rec_profile: None,
             proc_states: Default::default(),
             proc_fg: None,
+            startup_profile_applied: false,
             proc_pending: vec![],
             proc_retry: Default::default(),
             auto_form: Default::default(),

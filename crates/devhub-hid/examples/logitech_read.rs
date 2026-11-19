@@ -41,7 +41,44 @@ fn main() -> HubResult<()> {
                     .mouse
                     .ok_or(HubError::Unsupported("ボタンマップ"))?
                     .buttons;
-                println!("{} {:?}", driver.info().name, mapping);
+                println!("{} [{}] {:?}", driver.info().name, info.id, mapping);
+                #[cfg(windows)]
+                if std::env::args()
+                    .skip(1)
+                    .any(|arg| arg == format!("--verify-alt-{:04x}", info.pid))
+                {
+                    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+                        GetAsyncKeyState, VK_LMENU,
+                    };
+                    let slot = 3;
+                    let set = |action| driver.apply(&Change::Button { slot, action });
+                    let original = mapping
+                        .get(slot)
+                        .ok_or(HubError::Unsupported("サイドボタン"))?
+                        .clone();
+                    let result = set(ButtonAction::Key(devhub_core::KeyStroke {
+                        mods: 4,
+                        usage: 0,
+                    }))
+                    .and_then(|_| {
+                        println!("READY: hold and release G4 on {}.", driver.info().name);
+                        let deadline =
+                            std::time::Instant::now() + std::time::Duration::from_secs(100);
+                        let mut down = false;
+                        while std::time::Instant::now() < deadline {
+                            let pressed = unsafe { GetAsyncKeyState(i32::from(VK_LMENU)) } < 0;
+                            if down && !pressed {
+                                println!("Verified Windows left Alt down/up.");
+                                return Ok(());
+                            }
+                            down |= pressed;
+                            std::thread::sleep(std::time::Duration::from_millis(10));
+                        }
+                        Err(HubError::Protocol("Alt down/up timeout".into()))
+                    });
+                    set(original)?;
+                    result?;
+                }
                 if std::env::args().any(|arg| arg == "--verify-side-button") {
                     verify_side_button(driver.as_ref(), &mapping)?;
                     println!("Side-button change and restoration verified.");

@@ -13,3 +13,6 @@ aes = "0.8"
 cbc = "0.1"
 md-5 = "0.10"
 base64 = "0.22"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_UI_Input_KeyboardAndMouse"] }

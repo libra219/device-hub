@@ -15,7 +15,7 @@ if ($Restore) {
     if ($previous -and !$key.GetValue('LGHUB')) {
         New-ItemProperty -LiteralPath $run -Name LGHUB -Value $previous -PropertyType String | Out-Null
     }
-    if ($key.GetValue($entry) -eq $saved.GetValue('Command')) {
+    if ($key.GetValue($entry) -and $key.GetValue($entry) -eq $saved.GetValue('Command')) {
         Remove-ItemProperty -LiteralPath $run -Name $entry
     }
     Remove-Item -LiteralPath $state

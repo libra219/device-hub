@@ -599,7 +599,9 @@ impl Shell {
                     })
                     .child(kind_label(k))
                     .on_click(cx.listener(move |this, _, _, cx| {
-                        let nd = default_action(k);
+                        let nd = if mc.volatile_buttons && k == ButtonActionKind::Key {
+                            ButtonAction::Key(KeyStroke {mods:4, usage:0})
+                        } else { default_action(k) };
                         if let Some(Modal::Button { draft, capture, .. }) = this.modal.as_mut() {
                             if draft.kind() != k {
                                 *draft = nd.clone();
@@ -802,6 +804,9 @@ impl Shell {
                         ),
                     ))
                     .into_any_element()
+            }
+            ButtonAction::Key(_) if mc.volatile_buttons => {
+                ui::faint("左 Alt（ボタンを押している間）").into_any_element()
             }
             ButtonAction::Key(stroke) => {
                 let s = *stroke;

@@ -13,6 +13,8 @@ with a Liquid Glass design.
 
 ![Device HUB](docs/screenshot.png)
 
+Logicool PRO Wireless / G309 のボタン割当、左 Alt 保持、アプリ別プロファイル、Windows 常駐の手順は [Logicool マウスの設定](docs/LOGICOOL_JA.md) を参照してください。
+
 ## Features
 
 - **Mouse** — DPI stages, polling rate, button remapping (keyboard keys,

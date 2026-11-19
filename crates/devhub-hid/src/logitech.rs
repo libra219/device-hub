@@ -1,4 +1,6 @@
 //! HID++ 2.0 host-mode button maps. Foreground changes only touch volatile state.
+#[cfg(windows)]
+mod alt;
 use devhub_core::{backend::*, model::*};
 use hidapi::HidDevice;
 use std::{
@@ -74,6 +76,10 @@ pub struct Driver {
     map: u8,
     onboard: u8,
     count: usize,
+    #[cfg(windows)]
+    listener: Mutex<Option<alt::Listener>>,
+    #[cfg(windows)]
+    restore: Mutex<[Option<u8>; 16]>,
 }
 
 pub fn open(dev: HidDevice, mut info: DeviceInfo) -> HubResult<Driver> {
@@ -106,6 +112,10 @@ pub fn open(dev: HidDevice, mut info: DeviceInfo) -> HubResult<Driver> {
             map,
             onboard,
             count,
+            #[cfg(windows)]
+            listener: Mutex::new(None),
+            #[cfg(windows)]
+            restore: Mutex::new([None; 16]),
         });
     }
     Err(HubError::Disconnected)
@@ -146,7 +156,12 @@ impl DeviceDriver for Driver {
                     name: format!("G{n}"),
                 })
                 .collect(),
-            button_kinds: vec![ButtonActionKind::Mouse, ButtonActionKind::Disabled],
+            button_kinds: vec![
+                ButtonActionKind::Mouse,
+                ButtonActionKind::Disabled,
+                #[cfg(windows)]
+                ButtonActionKind::Key,
+            ],
             require_left_click: true,
             macros: None,
             live_buttons: vec![],
@@ -157,6 +172,20 @@ impl DeviceDriver for Driver {
     fn read(&self) -> HubResult<DeviceState> {
         let dev = self.dev.lock().unwrap_or_else(|p| p.into_inner());
         let map = request(&dev, self.index, self.map, 3, &[])?;
+        let mut buttons: Vec<_> = map[..self.count].iter().copied().map(decode).collect();
+        #[cfg(windows)]
+        if let Some(listener) = self
+            .listener
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .as_ref()
+        {
+            for (slot, button) in buttons.iter_mut().enumerate() {
+                if listener.slots() & (1 << slot) != 0 && map[slot] == 0 {
+                    *button = ButtonAction::Key(KeyStroke { mods: 4, usage: 0 });
+                }
+            }
+        }
         Ok(DeviceState {
             profile: Default::default(),
             settings: Default::default(),
@@ -166,7 +195,7 @@ impl DeviceDriver for Driver {
             mouse: Some(MouseState {
                 stages: vec![],
                 active_stage: 0,
-                buttons: map[..self.count].iter().map(|v| decode(*v)).collect(),
+                buttons,
                 macros: vec![],
                 adaptive: None,
             }),
@@ -180,6 +209,8 @@ impl DeviceDriver for Driver {
             return Err(HubError::Invalid("ボタン番号".into()));
         }
         let value = match action {
+            #[cfg(windows)]
+            ButtonAction::Key(KeyStroke { mods: 4, usage: 0 }) => 0,
             ButtonAction::Disabled => 0,
             ButtonAction::Mouse(f) => {
                 FUNCTIONS
@@ -196,6 +227,8 @@ impl DeviceDriver for Driver {
             return Err(HubError::Disconnected);
         }
         let mut map = request(&dev, self.index, self.map, 3, &[])?;
+        #[cfg(windows)]
+        let original = map[*slot];
         map[*slot] = value;
         if !map[..self.count].contains(&1) {
             return Err(HubError::Invalid(
@@ -205,10 +238,78 @@ impl DeviceDriver for Driver {
         if request(&dev, self.index, self.onboard, 2, &[])?[0] != 2 {
             request(&dev, self.index, self.onboard, 1, &[2])?;
         }
+        #[cfg(windows)]
+        let mut listener = self.listener.lock().unwrap_or_else(|p| p.into_inner());
+        #[cfg(windows)]
+        let alt = matches!(action, ButtonAction::Key(_));
+        #[cfg(windows)]
+        if alt {
+            if listener.as_ref().is_none_or(|l| !l.live()) {
+                *listener = Some(alt::Listener::open(&dev, self.index, self.map)?);
+            }
+            if listener.as_ref().unwrap().slots() == 0 {
+                request(&dev, self.index, self.map, 1, &[])?;
+            }
+        }
         request(&dev, self.index, self.map, 4, &map)?;
         if request(&dev, self.index, self.map, 3, &[])?[..self.count] != map[..self.count] {
             return Err(HubError::Protocol("ボタン割当の読み戻し不一致".into()));
         }
+        #[cfg(windows)]
+        if let Some(l) = listener.as_ref() {
+            let bit = 1u16 << slot;
+            let mut restore = self.restore.lock().unwrap_or_else(|p| p.into_inner());
+            if alt {
+                restore[*slot].get_or_insert(original);
+            } else {
+                restore[*slot] = None;
+            }
+            l.set(if alt {
+                l.slots() | bit
+            } else {
+                l.slots() & !bit
+            });
+            if l.slots() == 0 {
+                *listener = None;
+                request(&dev, self.index, self.map, 2, &[])?;
+            }
+        }
         Ok(())
+    }
+}
+
+#[cfg(windows)]
+impl Drop for Driver {
+    fn drop(&mut self) {
+        let listener = self
+            .listener
+            .get_mut()
+            .unwrap_or_else(|p| p.into_inner())
+            .take();
+        if listener.is_none() {
+            return;
+        }
+        drop(listener);
+        let dev = self.dev.get_mut().unwrap_or_else(|p| p.into_inner());
+        if self.index != 255 && identify(dev, self.index).ok().as_ref() != Some(&self.info.name) {
+            return;
+        }
+        if let Ok(mut map) = request(dev, self.index, self.map, 3, &[]) {
+            for (slot, previous) in self
+                .restore
+                .get_mut()
+                .unwrap_or_else(|p| p.into_inner())
+                .iter()
+                .enumerate()
+            {
+                if map[slot] == 0 {
+                    if let Some(value) = previous {
+                        map[slot] = *value;
+                    }
+                }
+            }
+            let _ = request(dev, self.index, self.map, 4, &map);
+        }
+        let _ = request(dev, self.index, self.map, 2, &[]);
     }
 }
